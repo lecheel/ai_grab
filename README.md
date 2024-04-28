@@ -2,6 +2,7 @@
 
 The AI ImageGrab application with Comfyui Workflow Adapter is a Python-based tool designed for image processing and manipulation. It provides a graphical user interface (GUI) for users to interact with and perform various image-related tasks. The application utilizes tkinter for the GUI, PIL for image handling, threading for concurrency, and websocket for communication with a server via Comfyui's workflow adapter.
 
+(https://youtu.be/KU9LEyaDE34)
 ## Features
 
 - **Image Capture**: Captures images from a camera device in real-time.
