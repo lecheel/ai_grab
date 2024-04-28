@@ -1,0 +1,6 @@
+*.pyc
+output
+*.jpg
+*.png
+*.safetensors
+*.ckpt
