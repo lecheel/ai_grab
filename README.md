@@ -32,7 +32,7 @@ Use the following command to create a new Conda environment named `aiimagegrab` 
 conda create --name aigrab python=3.10 
 ```
 
-This command will create a new Conda environment named `aiimagegrab` and install the packages listed in `requirements.txt`.
+This command will create a new Conda environment named `aigrab` and install the packages listed in `requirements.txt`.
 
 ### Step 2: Activate Conda Environment
 
@@ -41,6 +41,7 @@ Activate the newly created Conda environment using the following command:
 - **On Windows**:
   ```bash
   conda activate aigrab
+  pip install -r requirenments.txt
   ```
 ### Step 3: Verify Installation
 
