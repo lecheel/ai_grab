@@ -538,7 +538,6 @@ class ImageViewer(tk.Tk):
             # check if option_frame is not None
             if self.option_frame:
                 self.option_frame.set_workflow(self.wf)
-            print("Loaded workflow: type {}".format(type(self.wf)))
             print("Loaded workflow:", workflow_path)
         except Exception as e:
             print("Error loading workflow:", e)
