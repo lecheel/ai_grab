@@ -16,6 +16,7 @@ import time
 import cv2
 import os
 import sys
+import glob
 
 # from rich import print
 import queue
@@ -29,29 +30,15 @@ from requests_toolbelt import MultipartEncoder
 server_address = "127.0.0.1:8188"
 client_id = str(uuid.uuid4())
 
-class TextRedirector:
-    def __init__(self, text_widget, tag):
-        self.text_widget = text_widget
-        self.tag = tag
-
-    def write(self, msg):
-        self.text_widget.config(state="normal")
-        self.text_widget.insert("end", msg, (self.tag,))
-        self.text_widget.config(state="disabled")
-        self.text_widget.see("end")  # Automatically scroll to the end
-
-    def flush(self):
-        pass
 
 class ImageViewer(tk.Tk):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.title("AI ImageGrab")
         self.iconbitmap("./icons/ai_imagegrab.ico")
-        self.geometry("830x600")
+        self.geometry("830x700")
         self.imgLock = False
-
-#        self.img_lock = threading.Lock()
+        self.option_frame = None
 
         self.full_image = None
         self.current_image_index = 0
@@ -68,32 +55,15 @@ class ImageViewer(tk.Tk):
 
         self.camera_x = 0
         self.camera_y = 0
+        self.wf = None
 		
+        self.load_workflow('./workflows/sketch_api.json')
+
         self.load_settings()
         self.setup_ui()
         self.setup_websocket()
         self.setup_camera()
          
-        """ 
-        # Create a text widget to display console logs
-        self.log_text = tk.Text(self, wrap="word", state="disabled")
-        self.log_text.pack(expand=True, fill="both")
-
-        # Create a scrollbar and attach it to the text widget
-        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.log_text.yview)
-        self.scrollbar.pack(side="right", fill="y")
-        self.log_text.configure(yscrollcommand=self.scrollbar.set)
-
-        # Redirect stdout and stderr to the text widget
-        sys.stdout = TextRedirector(self.log_text, "stdout")
-        sys.stderr = TextRedirector(self.log_text, "stderr")
-
-        # Start a thread to periodically check for updates to the text widget
-        self.update_console_thread = threading.Thread(target=self.update_console)
-        self.update_console_thread.daemon = True
-        self.update_console_thread.start()
-        """
-
 
     def update_console(self):
         # Periodically update the text widget to check for new logs
@@ -108,7 +78,19 @@ class ImageViewer(tk.Tk):
         self.log_text.config(state="disabled")
 
     def setup_ui(self):
-
+        """
+        +-----------------------+
+        | toolbar |  |  |       +
+        +-----------------------+
+        | * options             |
+        |     option1           |
+        |     option2           |
+        +-----------------------+
+        | input_text, slider    |
+        +-----------------------+
+        | canvas1 | cancas2     |
+        +-----------------------+
+        """
         default_visibility = False
         # Create a toolbar frame
         self.toolbar_frame = tk.Frame(self, bd=1, relief=tk.RAISED)
@@ -134,9 +116,9 @@ class ImageViewer(tk.Tk):
             self.toolbar_buttons.append(button)
 
         self.options_frame = OptionFrame(self, self.handle_option, default_visibility=default_visibility)
-        if default_visibility:
-            self.options_frame.pack(side=tk.TOP, fill=tk.NONE, expand=False)
-        self.is_options_visible = default_visibility
+        # if default_visibility:
+            # self.options_frame.pack(side=tk.TOP, fill=tk.NONE, expand=False)
+        # self.is_options_visible = default_visibility
 
         # Create the option frame
         #self.options_frame = tk.Frame(self, bd=1, relief=tk.RAISED)
@@ -151,8 +133,20 @@ class ImageViewer(tk.Tk):
         self.camera_x = self.settings.get("camera_x", 0)
         self.camera_y = self.settings.get("camera_y", 0)
 
+        label = tk.Label(top_frame, text="sketch_api:")
+        label.pack(side=tk.LEFT)
+        """
+        workflow_filenames = [os.path.basename(filename) for filename in workflow_list]
+        self.menu_workflow = tk.StringVar(self)
+        self.menu_workflow.set(workflow_filenames[0])
+        self.menu = tk.OptionMenu(top_frame, self.menu_workflow, *workflow_filenames)
+        self.menu.pack(side=tk.LEFT)
+        # Register the callback function to be called when the menu selection changes
+        self.menu_workflow.trace_add('write', self.on_workflow_change)
+        """
+
         self.prompt_button = tk.Button(top_frame, text="Prompt", command=lambda: \
-                self.prompt_img2img(workflow, self.text_input.get(), self.slider.get(), save_previews=True))
+                self.prompt_img2img(self.text_input.get(), self.slider.get(), save_previews=True))
         self.prompt_button.pack(side=tk.LEFT)
 
         # Create an input text field
@@ -175,6 +169,11 @@ class ImageViewer(tk.Tk):
 
         # Keep the window always on top
         self.attributes('-topmost', False)
+
+    def on_workflow_change(self, *args):
+        selected_workflow = self.menu_workflow.get()
+        self.wf = self.load_workflow("./workflows/" + selected_workflow)
+        option_frame.update_config_data()
 
     def toggle_button(self, index):
         # Toggle the button status
@@ -208,7 +207,8 @@ class ImageViewer(tk.Tk):
         self.quit_app()
 
     def Option(self):
-        self.toggle_options()
+        pass
+        # self.toggle_options()
 
     def toggle_options(self):
         if not self.is_options_visible:
@@ -409,20 +409,20 @@ class ImageViewer(tk.Tk):
                   current_step = data['value']
                   max_step = data['max']
                   # progress_text = f"Progress: {current_step}/{max_step}"
-                  print('In K-Sampler -> Step: ', current_step, ' of: ', data['max'])
+                  # print('In K-Sampler -> Step: ', current_step, ' of: ', data['max'])
               if message['type'] == 'execution_cached':
                   data = message['data']
                   for itm in data['nodes']:
                       if itm not in finished_nodes:
                           finished_nodes.append(itm)
-                          print('Progess: ', len(finished_nodes), '/', len(node_ids), ' Tasks done')
+                          # print('Progess: ', len(finished_nodes), '/', len(node_ids), ' Tasks done')
                           # Update the label with progress information
                           progress_text = f"Progress: {len(finished_nodes)}/{len(node_ids)} Tasks done"
               if message['type'] == 'executing':
                   data = message['data']
                   if data['node'] not in finished_nodes:
                       finished_nodes.append(data['node'])
-                      print('Progess: ', len(finished_nodes), '/', len(node_ids), ' Tasks done')
+                      # print('Progess: ', len(finished_nodes), '/', len(node_ids), ' Tasks done')
                       # Update the label with progress information
                       progress_text = f"Progress: {len(finished_nodes)}/{len(node_ids)} Tasks done"
 
@@ -497,16 +497,22 @@ class ImageViewer(tk.Tk):
         pil_image.paste(canvas, (0, 0))
         return pil_image   
 
-    def prompt_img2img(self, workflow, positve_prompt, strength, negative_prompt='', save_previews=False):
-        prompt = json.loads(workflow)
+    def prompt_img2img(self, positve_prompt, strength, negative_prompt='', save_previews=False):
+        prompt = json.loads(self.wf)
         image_data = self.image1_copy
+        if self.last_seed is None:
+            self.last_seed = random.randint(10**14, 10**15 - 1)
         id_to_class_type = {id: details['class_type'] for id, details in prompt.items()}
         k_sampler = [key for key, value in id_to_class_type.items() if value == 'KSampler'][0]
-        prompt.get(k_sampler)['inputs']['seed'] = random.randint(10**14, 10**15 - 1)
+        prompt.get(k_sampler)['inputs']['seed'] = self.last_seed
         postive_input_id = prompt.get(k_sampler)['inputs']['positive'][0]
         prompt.get(postive_input_id)['inputs']['text'] = positve_prompt
         prompt.get(k_sampler)['inputs']['denoise'] = strength
-        
+
+        # apply cfg and steps from slider
+        prompt.get(k_sampler)['inputs']['steps'] = self.option_frame.step_slider.get()
+        prompt.get(k_sampler)['inputs']['cfg'] = self.option_frame.cfg_slider.get()
+ 
         if negative_prompt != '':
             negative_input_id = prompt.get(k_sampler)['inputs']['negative'][0]
             prompt.get(negative_input_id)['inputs']['text'] = negative_prompt
@@ -523,18 +529,20 @@ class ImageViewer(tk.Tk):
         self.ws.close()  # Close WebSocket connection
         self.destroy()   # Quit the application
 
-def load_workflow(workflow_path):
-  try:
-      with open(workflow_path, 'r') as file:
-          workflow = json.load(file)
-          return json.dumps(workflow)
-  except FileNotFoundError:
-      print(f"The file {workflow_path} was not found.")
-      return None
-  except json.JSONDecodeError:
-      print(f"The file {workflow_path} contains invalid JSON.")
-      return None
-
+    def load_workflow(self, workflow_path):
+        print("Initializing workflow data... {}".format(workflow_path))
+        try:
+            with open(workflow_path, 'r') as file:
+                workflow_content = json.load(file)
+            self.wf = json.dumps(workflow_content)
+            # check if option_frame is not None
+            if self.option_frame:
+                self.option_frame.set_workflow(self.wf)
+            print("Loaded workflow: type {}".format(type(self.wf)))
+            print("Loaded workflow:", workflow_path)
+        except Exception as e:
+            print("Error loading workflow:", e)
+            self.wf = {}  # Reset workflow if loading fails
 
 def check_server_availability(server_address):
     try:
@@ -564,25 +572,10 @@ def main():
 
 if __name__ == "__main__":
     if main():
-        workflow = load_workflow('./workflows/sketch_api.json')
+        workflow_list = glob.glob('./workflows/*.json')
         app = ImageViewer()
-        option_frame = OptionFrame(None, handle_option=None)
-        # option_frame.pack()
+        option_frame = OptionFrame(app, handle_option=None)
+        option_frame.pack()  # Ensure the frame is packed
+        app.option_frame = option_frame  # Store the reference to option_frame in the app
         app.mainloop()
 
-"""
-+-----------------------+
-| toolbar |  |  |       +
-+-----------------------+
-| option                |
-|    option1            |
-|    option2            |
-+-----------------------+
-| input_text, slider    |
-+-----------------------+
-| canvas1 | cancas2     |
-+-----------------------+
-
-
-
-"""

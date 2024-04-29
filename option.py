@@ -8,8 +8,24 @@ class OptionFrame(tk.Frame):
         self.handle_option = handle_option
         self.default_visibility = default_visibility
         self.is_visible = default_visibility
+        self.workflow = parent.wf
         self.config_data = {}  # Dictionary to hold configuration data
         self.workflow_options()  # Setup UI elements
+        self.update_config_data()  # Load configuration data
+
+    def update_config_data(self):
+        prompt = json.loads(self.workflow)
+        id_to_class_type = {id: details['class_type'] for id, details in prompt.items()}
+        k_sampler = [key for key, value in id_to_class_type.items() if value == 'KSampler'][0]
+        self.config_data["cfg"] = prompt.get(k_sampler)["inputs"]["cfg"]
+        self.config_data["step"] = prompt.get(k_sampler)["inputs"]["steps"]
+
+        self.cfg_slider.set(self.config_data["cfg"])
+        self.step_slider.set(self.config_data["step"])
+
+    def set_workflow(self, workflow):
+        self.workflow = workflow
+        self.update_config_data()
 
     def workflow_options(self):
         
@@ -31,6 +47,7 @@ class OptionFrame(tk.Frame):
         self.step_slider = tk.Scale(cfg_step_frame, from_=1, to=30, resolution=1, orient=tk.HORIZONTAL)
         self.step_slider.grid(row=0, column=3, padx=5, pady=5, sticky='w')
 
+        """
         # Group for Lora sliders
         lora_frame = ttk.LabelFrame(self, text="Lora")
         lora_frame.grid(row=1, column=0, padx=5, pady=5, sticky='w')
@@ -48,12 +65,14 @@ class OptionFrame(tk.Frame):
 
         self.lora_strength_clip_slider = tk.Scale(lora_frame, from_=0.1, to=10.0, resolution=0.1, orient=tk.HORIZONTAL)
         self.lora_strength_clip_slider.grid(row=0, column=3, padx=5, pady=5, sticky='w')
+        """
+
 
         # Set initial slider values based on config data
-        self.cfg_slider.set(self.config_data.get("cfg", 1.8))
-        self.step_slider.set(self.config_data.get("step", 10))
-        self.lora_strength_model_slider.set(self.config_data.get("lora_strength_model", 5.0))
-        self.lora_strength_clip_slider.set(self.config_data.get("lora_strength_clip", 7.0))
+        # self.cfg_slider.set(self.config_data.get("cfg", 1.8))
+        # self.step_slider.set(self.config_data.get("step", 10))
+        # self.lora_strength_model_slider.set(self.config_data.get("lora_strength_model", 5.0))
+        # self.lora_strength_clip_slider.set(self.config_data.get("lora_strength_clip", 7.0))
 
         # Separator
         separator = ttk.Separator(self, orient='horizontal')
