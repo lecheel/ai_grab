@@ -47,6 +47,7 @@ class ImageViewer(tk.Tk):
         self.image1_copy = None
         self.image2 = None
         self.last_seed = None
+        self.workflow_name = ""
 
         self.ws = None
         self.camera = None
@@ -60,7 +61,13 @@ class ImageViewer(tk.Tk):
         self.load_workflow('./workflows/sketch_api.json')
 
         self.load_settings()
+        self.workflow_name = self.settings.get("workflow_name") 
+        if self.workflow_name is None:
+            self.workflow_name = "./workflows/sketch.json"
+        print("Workflow name:", self.workflow_name)
+        self.load_workflow(self.workflow_name)
         self.setup_ui()
+        self.option_frame.update_config_data()  # Load configuration data
         self.setup_websocket()
         self.setup_camera()
          
@@ -97,9 +104,9 @@ class ImageViewer(tk.Tk):
         self.toolbar_frame.pack(side=tk.TOP, fill=tk.X)
 
         # Define toolbar buttons with corresponding icon indices
-        self.icon_names = ["i_option", "i_top", "i_preview", "i_region", "i_quit"]
-        self.icon_names_toggled = ["i_option_on", "i_top_on", "i_preview_on", "i_region_on", "i_quit_on"]  # Toggled icons
-        self.button_functions = [self.Option, self.Top_fun, self.Preview_fun, self.Region_fun, self.Quit_fun]
+        self.icon_names = ["i_top", "i_preview", "i_region", "i_quit"]
+        self.icon_names_toggled = ["i_top_on", "i_preview_on", "i_region_on", "i_quit_on"]  # Toggled icons
+        self.button_functions = [self.Top_fun, self.Preview_fun, self.Region_fun, self.Quit_fun]
         self.button_statuses = [False] * len(self.icon_names)  # Initialize button statuses to False
         self.toolbar_buttons = []  # To keep references to toolbar buttons
         
@@ -115,15 +122,6 @@ class ImageViewer(tk.Tk):
             button.pack(side=tk.LEFT, padx=2, pady=2)
             self.toolbar_buttons.append(button)
 
-        self.options_frame = OptionFrame(self, self.handle_option, default_visibility=default_visibility)
-        # if default_visibility:
-            # self.options_frame.pack(side=tk.TOP, fill=tk.NONE, expand=False)
-        # self.is_options_visible = default_visibility
-
-        # Create the option frame
-        #self.options_frame = tk.Frame(self, bd=1, relief=tk.RAISED)
-        #self.options_frame.pack(side=tk.TOP, fill=tk.X)
-
         top_frame = tk.Frame(self)
         top_frame.pack()
 
@@ -133,17 +131,14 @@ class ImageViewer(tk.Tk):
         self.camera_x = self.settings.get("camera_x", 0)
         self.camera_y = self.settings.get("camera_y", 0)
 
-        label = tk.Label(top_frame, text="sketch_api:")
-        label.pack(side=tk.LEFT)
-        """
+        # Added a menu to select a workflow
         workflow_filenames = [os.path.basename(filename) for filename in workflow_list]
         self.menu_workflow = tk.StringVar(self)
-        self.menu_workflow.set(workflow_filenames[0])
+        self.menu_workflow.set(self.workflow_name[12:])
         self.menu = tk.OptionMenu(top_frame, self.menu_workflow, *workflow_filenames)
         self.menu.pack(side=tk.LEFT)
         # Register the callback function to be called when the menu selection changes
         self.menu_workflow.trace_add('write', self.on_workflow_change)
-        """
 
         self.prompt_button = tk.Button(top_frame, text="Prompt", command=lambda: \
                 self.prompt_img2img(self.text_input.get(), self.slider.get(), save_previews=True))
@@ -159,6 +154,9 @@ class ImageViewer(tk.Tk):
         self.slider.pack(side=tk.LEFT)
         self.slider.set(self.settings.get("strength", 0.1))
 
+        self.option_frame = OptionFrame(self, handle_option=None)
+        self.option_frame.pack(side=tk.TOP, fill=tk.BOTH)
+
         self.is_options_visible = False
         self.canvas_frame = tk.Frame(self)
         self.canvas_frame.pack()
@@ -172,8 +170,9 @@ class ImageViewer(tk.Tk):
 
     def on_workflow_change(self, *args):
         selected_workflow = self.menu_workflow.get()
-        self.wf = self.load_workflow("./workflows/" + selected_workflow)
-        option_frame.update_config_data()
+        self.workflow_name = "./workflows/" + selected_workflow
+        self.load_workflow(self.workflow_name)
+        self.option_frame.update_config_data()
 
     def toggle_button(self, index):
         # Toggle the button status
@@ -205,21 +204,6 @@ class ImageViewer(tk.Tk):
 
     def Quit_fun(self):
         self.quit_app()
-
-    def Option(self):
-        pass
-        # self.toggle_options()
-
-    def toggle_options(self):
-        if not self.is_options_visible:
-            # Pack the options frame before the canvas frame to ensure it follows the toolbar
-            self.options_frame.pack(side=tk.TOP, fill=tk.NONE, expand=False, before=self.canvas_frame)
-        else:
-            self.options_frame.pack_forget()
-        self.is_options_visible = not self.is_options_visible
-
-    def handle_option(self, name, value):
-        pass
 
     def Preview_fun(self):
         # Toggle the visibility of canvas1
@@ -269,6 +253,7 @@ class ImageViewer(tk.Tk):
         self.settings["strength"] = self.slider.get()
         self.settings["camera_x"] = self.camera_x
         self.settings["camera_y"] = self.camera_y
+        self.settings["workflow_name"] = self.workflow_name
         with open("settings.json", "w") as f:
             json.dump(self.settings, f)
 
@@ -573,8 +558,5 @@ if __name__ == "__main__":
     if main():
         workflow_list = glob.glob('./workflows/*.json')
         app = ImageViewer()
-        option_frame = OptionFrame(app, handle_option=None)
-        option_frame.pack()  # Ensure the frame is packed
-        app.option_frame = option_frame  # Store the reference to option_frame in the app
         app.mainloop()
 
