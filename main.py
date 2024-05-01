@@ -322,14 +322,15 @@ class ImageViewer(tk.Tk):
     def update_canvas2(self):
         if self.imageX:
             if not self.imgLock:
-                self.image2 = ImageTk.PhotoImage(self.imageX)
+                if self.imageX.height > 512 or self.imageX.width > 512:
+                    self.imageX2 = self.imageX.copy()
+                    self.imageX2 = self.imageX2.resize((512, 512))
+                    self.image2 = ImageTk.PhotoImage(self.imageX2)
+                else:
+                    self.image2 = ImageTk.PhotoImage(self.imageX)
                 self.canvas2.create_image(0, 0, anchor=tk.NW, image=self.image2)
                 self.copy_image_to_clipboard(self.imageX)
-                # self.update_idletasks()
                 self.imgLock = True
-
-                # self.progress_bar.stop()
-                # self.progress_bar['value'] = 0
 
     def get_images(self, prompt):
         prompt_id = self.queue_prompt(prompt)['prompt_id']
