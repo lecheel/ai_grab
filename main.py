@@ -17,6 +17,8 @@ import cv2
 import os
 import sys
 import glob
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
 
 # from rich import print
 import queue
@@ -30,6 +32,12 @@ from requests_toolbelt import MultipartEncoder
 server_address = "127.0.0.1:8188"
 client_id = str(uuid.uuid4())
 
+def compare_images(image1, image2):
+    gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+    
+    similarity = ssim(gray1, gray2)
+    return similarity
 
 class ImageViewer(tk.Tk):
     def __init__(self, *args, **kwargs):
@@ -46,7 +54,10 @@ class ImageViewer(tk.Tk):
         self.image1 = None
         self.image1_copy = None
         self.image2 = None
-        self.last_seed = None
+        self.last_seed = None 
+        self.last_image = None
+        self.autoQueue = 0
+        self.forcePrompt = 1
         self.workflow_name = ""
 
         self.ws = None
@@ -154,6 +165,11 @@ class ImageViewer(tk.Tk):
         self.slider.pack(side=tk.LEFT)
         self.slider.set(self.settings.get("strength", 0.1))
 
+        self.autoQueue = tk.IntVar()
+        switch = tk.Checkbutton(top_frame, text="Auto", variable=self.autoQueue, onvalue=1, offvalue=0,
+                                command=self.auto_queue_handler)
+        switch.pack()
+
         self.option_frame = OptionFrame(self, handle_option=None)
         self.option_frame.pack(side=tk.TOP, fill=tk.BOTH)
 
@@ -167,6 +183,26 @@ class ImageViewer(tk.Tk):
 
         # Keep the window always on top
         self.attributes('-topmost', False)
+
+    def auto_queue_handler(self):
+        if self.autoQueue.get() == 1:  # If Auto is checked
+            self.schedule_prompt()
+        else:
+            self.cancel_prompt()
+
+    def schedule_prompt(self):
+        print("Schedule prompt <<")
+        self.forcePrompt = 0
+        self.prompt_img2img(self.text_input.get(), self.slider.get(), save_previews=True)
+        self.schedule_id = self.after(1000, self.schedule_prompt)  # Schedule the next prompt_img2img call after 1000 milliseconds (1 second)
+
+    def cancel_prompt(self):
+        print("Cancel prompt >>")
+        self.forcePrompt = 1
+        if self.schedule_id:
+            self.after_cancel(self.schedule_id)  # Cancel the scheduled task if any
+            self.schedule_id = None
+
 
     def on_workflow_change(self, *args):
         selected_workflow = self.menu_workflow.get()
@@ -483,32 +519,61 @@ class ImageViewer(tk.Tk):
         pil_image.paste(canvas, (0, 0))
         return pil_image   
 
-    def prompt_img2img(self, positve_prompt, strength, negative_prompt='', save_previews=False):
-        prompt = json.loads(self.wf)
-        image_data = self.image1_copy
-        if self.last_seed is None:
-            self.last_seed = random.randint(10**14, 10**15 - 1)
-        id_to_class_type = {id: details['class_type'] for id, details in prompt.items()}
-        k_sampler = [key for key, value in id_to_class_type.items() if value == 'KSampler'][0]
-        prompt.get(k_sampler)['inputs']['seed'] = self.last_seed
-        postive_input_id = prompt.get(k_sampler)['inputs']['positive'][0]
-        prompt.get(postive_input_id)['inputs']['text'] = positve_prompt
-        prompt.get(k_sampler)['inputs']['denoise'] = strength
+    def check_img2img(self):
+        ret = False
+        # check if force prompt button is pressed
+        if self.forcePrompt == 1:
+            return True
+        if self.autoQueue.get() == 0:
+            return True
+        # Check if there is a previous image to compare with
+        similarity = 0.0
+        if self.image1 is not None:
+            # Convert PhotoImage to PIL Image
+            pil_image = ImageTk.getimage(self.image1)
+            image1_np = np.array(pil_image)
+            
+            # Check if last_image is initialized
+            if self.last_image is not None:
+                # Compare the current image with the last one
+                similarity = compare_images(image1_np, self.last_image)
+                # print("Similarity with the last image:", similarity)
+            
+            # Update last_image with the current image
+            self.last_image = image1_np
+        if similarity < 1.0:
+            ret = True
+        return ret
 
-        # apply cfg and steps from slider
-        prompt.get(k_sampler)['inputs']['steps'] = self.option_frame.step_slider.get()
-        prompt.get(k_sampler)['inputs']['cfg'] = self.option_frame.cfg_slider.get()
- 
-        if negative_prompt != '':
-            negative_input_id = prompt.get(k_sampler)['inputs']['negative'][0]
-            prompt.get(negative_input_id)['inputs']['text'] = negative_prompt
-        
-        image_loader = [key for key, value in id_to_class_type.items() if value == 'LoadImage'][0]
-        # using timestamp as filename
-        filename = str(int(time.time())) + ".png"
-        prompt.get(image_loader)['inputs']['image'] = filename
-        
-        self.generate_image_by_prompt_and_image(prompt, './output/img2img', image_data, filename, save_previews)
+
+    def prompt_img2img(self, positve_prompt, strength, negative_prompt='', save_previews=False):
+        if self.check_img2img():
+            print(f"img2img prompt: {positve_prompt}")
+            prompt = json.loads(self.wf)
+            image_data = self.image1_copy
+            if self.last_seed is None:
+                self.last_seed = random.randint(10**14, 10**15 - 1)
+            id_to_class_type = {id: details['class_type'] for id, details in prompt.items()}
+            k_sampler = [key for key, value in id_to_class_type.items() if value == 'KSampler'][0]
+            prompt.get(k_sampler)['inputs']['seed'] = self.last_seed
+            postive_input_id = prompt.get(k_sampler)['inputs']['positive'][0]
+            prompt.get(postive_input_id)['inputs']['text'] = positve_prompt
+            prompt.get(k_sampler)['inputs']['denoise'] = strength
+
+            # apply cfg and steps from slider
+            prompt.get(k_sampler)['inputs']['steps'] = self.option_frame.step_slider.get()
+            prompt.get(k_sampler)['inputs']['cfg'] = self.option_frame.cfg_slider.get()
+     
+            if negative_prompt != '':
+                negative_input_id = prompt.get(k_sampler)['inputs']['negative'][0]
+                prompt.get(negative_input_id)['inputs']['text'] = negative_prompt
+            
+            image_loader = [key for key, value in id_to_class_type.items() if value == 'LoadImage'][0]
+            # using timestamp as filename
+            filename = str(int(time.time())) + ".png"
+            prompt.get(image_loader)['inputs']['image'] = filename
+            
+            self.generate_image_by_prompt_and_image(prompt, './output/img2img', image_data, filename, save_previews)
 
     def quit_app(self):
         self.save_settings()

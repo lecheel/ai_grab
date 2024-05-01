@@ -28,7 +28,7 @@
   },
   "6": {
     "inputs": {
-      "text": "japaness food, sushi, futomaki, snake,",
+      "text": "master piece, 4K",
       "clip": [ "4", 1 ]
     },
     "class_type": "CLIPTextEncode",
